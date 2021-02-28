@@ -1,0 +1,11 @@
+env
+.python-version
+__pycache__
+
+baseline_result/
+
+test_log.txt
+train_log.txt
+
+model/
+model-0/
