@@ -23,17 +23,18 @@ class Network(Layer):
         self.dropout_rate = dropout
         self.model_size = dmodel
         self.layers = layers
-        
+
     def forward(self, seq, dot):
         emb_seq = paddle.fluid.embedding(seq, size=(self.sequence_vocabulary.size, self.model_size), is_sparse=True)
         emb_dot = paddle.fluid.embedding(dot, size=(self.bracket_vocabulary.size, self.model_size), is_sparse=True)
         emb = paddle.fluid.layers.concat(input=[emb_seq,emb_dot], axis=1)
         emb = paddle.fluid.layers.fc(emb, size=self.model_size, act="relu")
         for _ in range(self.layers):
-            emb = paddle.fluid.layers.fc(emb, size=self.model_size*4)    
-            fwd, cell  = paddle.fluid.layers.dynamic_lstm(input=emb, size=self.model_size*4, use_peepholes=True, is_reverse=False)
-            back, cell = paddle.fluid.layers.dynamic_lstm(input=emb, size=self.model_size*4, use_peepholes=True, is_reverse=True)
+            emb = paddle.fluid.layers.fc(emb, size=self.model_size*2)
+            fwd, cell  = paddle.fluid.layers.dynamic_lstm(input=emb, size=self.model_size*2, use_peepholes=True, is_reverse=False)
+            back, cell = paddle.fluid.layers.dynamic_lstm(input=emb, size=self.model_size*2, use_peepholes=True, is_reverse=True)
             emb = paddle.fluid.layers.concat(input=[fwd, back], axis=1)
+            emb = paddle.fluid.layers.dropout(emb, self.dropout_rate)
             emb = paddle.fluid.layers.fc(emb, size=self.model_size, act="relu")
         ff_out = paddle.fluid.layers.fc(emb, size=2, act="relu")
         soft_out = paddle.fluid.layers.softmax(ff_out, axis=1)

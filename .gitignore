@@ -2,7 +2,7 @@ env
 .python-version
 __pycache__
 
-baseline_result/
+predict.files/
 
 test_log.txt
 train_log.txt

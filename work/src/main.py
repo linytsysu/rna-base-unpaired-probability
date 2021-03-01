@@ -45,7 +45,7 @@ def process_vocabulary(args, data, quiet=False):
         vocab.freeze()
     if not quiet:
         out(args.logfile, "done.")
-            
+
     def print_vocabulary(name, vocab):
         #special = {START, STOP, UNK}
         special = {START, STOP}
@@ -57,7 +57,7 @@ def process_vocabulary(args, data, quiet=False):
         print_vocabulary("Sequence", seq_vocab)
         print_vocabulary("Brackets", bracket_vocab)
     return seq_vocab, bracket_vocab
-    
+
 
 def reader_creator(args, data,
                    sequence_vocabulary, bracket_vocabulary,
@@ -80,12 +80,12 @@ def reader_creator(args, data,
 def run_train(args):
     out(args.logfile, datetime.datetime.now())
     out(args.logfile, "# python3 " + " ".join(sys.argv))
-    
+
     log = args.logfile
     train_data, val_data = load_train_data()
     out(log, "# Training set contains {} Sequences.".format(len(train_data)))
     out(log, "# Validation set contains {} Sequences.".format(len(val_data)))
-            
+
     trainer_count = fluid.dygraph.parallel.Env().nranks
     place = fluid.CUDAPlace(fluid.dygraph.parallel.Env().dev_id) if trainer_count > 1 else fluid.CUDAPlace(0)
     exe = fluid.Executor(place)
@@ -94,7 +94,7 @@ def run_train(args):
     out(log, "# Paddle: Using device: {}".format(place))
     out(log, "# Initializing model...")
 
-    seq_vocab, bracket_vocab = process_vocabulary(args, train_data)    
+    seq_vocab, bracket_vocab = process_vocabulary(args, train_data)
     network = Network(
         seq_vocab,
         bracket_vocab,
@@ -127,13 +127,13 @@ def run_train(args):
     dot = fluid.data(name="dot", shape=[None], dtype="int64", lod_level=1)
     y = fluid.data(name="label", shape=[None], dtype="float32")
     predictions = network(seq, dot)
-    
+
     loss = fluid.layers.mse_loss(input=predictions, label=y)
     avg_loss = fluid.layers.mean(loss)
 
     test_program = main_program.clone(for_test=True)
     feeder = paddle.fluid.DataFeeder(place=place, feed_list=[seq, dot, y])
-    
+
     learning_rate = 1e-4
     beta1 = 0.9
     beta2 = 0.999
@@ -147,7 +147,7 @@ def run_train(args):
     optimizer.minimize(avg_loss)
     exe.run(startup_program)
     exe_test = fluid.Executor(place)
-    
+
     start_epoch_index = 1
     for epoch in itertools.count(start=start_epoch_index):
         if epoch >= args.epochs + 1:
@@ -156,7 +156,7 @@ def run_train(args):
             fluid.io.shuffle(
                 reader_creator(args, train_data, seq_vocab, bracket_vocab), buf_size=500),
         batch_size=args.batch_size)
-        
+
         out(log, "# Epoch {} starting.".format(epoch))
         epoch_start_time = time.time()
         for batch_index, batch in enumerate(train_reader()):
@@ -169,22 +169,23 @@ def run_train(args):
             total_processed += len(batch)
             current_processed += len(batch)
             batches_since_dev_update += 1
-            out(log,
-                "epoch {:,} "
-                "batch {:,} "
-                "processed {:,} "
-                "batch-loss {:.4f} "
-                "epoch-elapsed {} "
-                "total-elapsed {} "
-                "".format(
-                    epoch,
-                    batch_index + 1,
-                    total_processed,
-                    float(batch_loss),
-                    format_elapsed(epoch_start_time),
-                    format_elapsed(start_time),
+            if (batch_index + 1) % 100 == 0:
+                out(log,
+                    "epoch {:,} "
+                    "batch {:,} "
+                    "processed {:,} "
+                    "batch-loss {:.4f} "
+                    "epoch-elapsed {} "
+                    "total-elapsed {} "
+                    "".format(
+                        epoch,
+                        batch_index + 1,
+                        total_processed,
+                        float(batch_loss),
+                        format_elapsed(epoch_start_time),
+                        format_elapsed(start_time),
+                    )
                 )
-            )
             if math.isnan(float(batch_loss[0])):
                 sys.exit("got NaN loss, training failed.")
             if current_processed >= check_every:
@@ -220,7 +221,7 @@ def run_train(args):
 
 
 
-                
+
 def run_test_withlabel(args):
     out(args.logfile, datetime.datetime.now())
     out(args.logfile, "# python3 " + " ".join(sys.argv))
@@ -231,9 +232,9 @@ def run_test_withlabel(args):
     out(log, "Loading data...")
     train_data, val_data = load_train_data()
     test_data = load_test_label_data()
-    
+
     out(log, "Loading model...")
-    seq_vocab, bracket_vocab = process_vocabulary(args, train_data)    
+    seq_vocab, bracket_vocab = process_vocabulary(args, train_data)
     network = Network(
         seq_vocab,
         bracket_vocab,
@@ -241,7 +242,7 @@ def run_test_withlabel(args):
         layers=args.layers,
         dropout=0,
     )
-    
+
     exe = fluid.Executor(place)
     paddle.enable_static()
     fluid.io.load_inference_model(args.model_path_base, exe)
@@ -259,11 +260,11 @@ def run_test_withlabel(args):
     predictions = network(seq, dot)
     loss = fluid.layers.mse_loss(input=predictions, label=y)
     avg_loss = fluid.layers.mean(loss)
-    
+
     main_program = fluid.default_main_program()
     test_program = main_program.clone(for_test=True)
     feeder = fluid.DataFeeder(place=place, feed_list=[seq, dot, y])
-    
+
     val_results = []
     for data in val_reader():
         loss, pred = exe.run(test_program,
@@ -275,7 +276,7 @@ def run_test_withlabel(args):
         val_results.append(loss[0])
     val_loss = sum(val_results) / len(val_results)
     out(log, "#  Dev Average Loss: {:6.4f} (MSE) -> {:6.4f} (RMSD)".format(float(val_loss), math.sqrt(float(val_loss))))
-    
+
     test_results = []
     avg_losses = []
     for data in test_reader():
@@ -322,7 +323,7 @@ def run_test(args):
         layers=args.layers,
         dropout=0,
     )
-    
+
     exe = fluid.Executor(place)
     paddle.enable_static()
     fluid.io.load_inference_model(args.model_path_base, exe)
@@ -333,7 +334,7 @@ def run_test(args):
     seq = fluid.data(name="seq", shape=[None], dtype="int64", lod_level=1)
     dot = fluid.data(name="dot", shape=[None], dtype="int64", lod_level=1)
     predictions = network(seq, dot)
-    
+
     main_program = fluid.default_main_program()
     test_program = main_program.clone(for_test=True)
     test_feeder = fluid.DataFeeder(place=place, feed_list=[seq, dot])
@@ -362,7 +363,7 @@ def main():
     subparser.add_argument("--dmodel", type=int, default=128)
     subparser.add_argument("--layers", type=int, default=8)
     subparser.add_argument("--dropout", type=float, default=0.15)
-    
+
     subparser = subparsers.add_parser("test_withlabel")
     subparser.set_defaults(callback=run_test_withlabel)
     subparser.add_argument("--model-path-base", required=False)
@@ -371,7 +372,7 @@ def main():
     subparser.add_argument("--dmodel", type=int, default=128)
     subparser.add_argument("--layers", type=int, default=8)
     subparser.add_argument("--dropout", type=float, default=0.15)
-    
+
     subparser = subparsers.add_parser("test")
     subparser.set_defaults(callback=run_test)
     subparser.add_argument("--model-path-base", required=False)
@@ -381,11 +382,11 @@ def main():
     subparser.add_argument("--layers", type=int, default=8)
     subparser.add_argument("--dropout", type=float, default=0.15)
 
-    
+
     args = parser.parse_args()
     args.logfile = open(args.logfile, "w")
     args.callback(args)
-    
+
 
 if __name__ == "__main__":
     sys.setrecursionlimit(10000)
