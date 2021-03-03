@@ -6,4 +6,4 @@ with open('./test_log.txt') as file:
         line = line.strip()
         count += 1
         result = pd.Series(line.split(' '))
-        result.to_csv('./baseline_result/%d.predict.txt'%count, index=False, header=False)
+        result.to_csv('./predict.files/%d.predict.txt'%count, index=False, header=False)
