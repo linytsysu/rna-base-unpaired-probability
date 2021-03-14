@@ -1,16 +1,35 @@
 import os
 from collections import defaultdict
 
+seq_dot_map = {
+    'A.': 'A',
+    'A(': 'B',
+    'A)': 'C',
+    'U.': 'D',
+    'U(': 'E',
+    'U)': 'F',
+    'C.': 'G',
+    'C(': 'H',
+    'C)': 'I',
+    'G.': 'J',
+    'G(': 'K',
+    'G)': 'L'
+}
+
 def read_data(filename, test=False):
     data, x = [], []
     for line in open(filename, "r"):
         line = line.strip()
         if not line:
             ID, seq, dot = x[:3]
+            new_seq = ""
+            for i in range(len(seq)):
+                new_seq += seq_dot_map[seq[i] + dot[i]]
             if test:
                 x = {"id": ID,
                      "sequence": seq,
                      "structure": dot,
+                     "mixture": new_seq,
                 }
                 data.append(x)
                 x = []
@@ -21,6 +40,7 @@ def read_data(filename, test=False):
             x = {"id": ID,
                  "sequence": seq,
                  "structure": dot,
+                 "mixture": new_seq,
                  "p_unpaired": punp,
             }
             data.append(x)
@@ -47,3 +67,6 @@ def load_test_label_data():
     return test
 
 
+if __name__ == "__main__":
+    data = load_train_data()
+    print(data[0][0])

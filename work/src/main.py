@@ -25,22 +25,26 @@ def process_vocabulary(args, data, quiet=False):
         out(args.logfile, "initializing vacabularies... ", end="")
     seq_vocab = vocabulary.Vocabulary()
     bracket_vocab = vocabulary.Vocabulary()
+    mixture_vocab = vocabulary.Vocabulary()
     #loop_type_vocab = vocabulary.Vocabulary()
 
-    for vocab in [seq_vocab, bracket_vocab]:#, loop_type_vocab]:
+    for vocab in [seq_vocab, bracket_vocab, mixture_vocab]:#, loop_type_vocab]:
         vocab.index(START)
         vocab.index(STOP)
     for x in data[:100]:
         seq = x["sequence"]
         dot = x["structure"]
+        mixture = x['mixture']
         #loop = x["predicted_loop_type"]
         for character in seq:
             seq_vocab.index(character)
         for character in dot:
             bracket_vocab.index(character)
+        for character in mixture:
+            mixture_vocab.index(character)
         #for character in loop:
         #    loop_type_vocab.index(character)
-    for vocab in [seq_vocab, bracket_vocab]:#, loop_type_vocab]:
+    for vocab in [seq_vocab, bracket_vocab, mixture_vocab]:#, loop_type_vocab]:
         #vocab.index(UNK)
         vocab.freeze()
     if not quiet:
@@ -56,24 +60,27 @@ def process_vocabulary(args, data, quiet=False):
     if not quiet:
         print_vocabulary("Sequence", seq_vocab)
         print_vocabulary("Brackets", bracket_vocab)
-    return seq_vocab, bracket_vocab
+        print_vocabulary("Mixture", mixture_vocab)
+    return seq_vocab, bracket_vocab, mixture_vocab
 
 
 def reader_creator(args, data,
-                   sequence_vocabulary, bracket_vocabulary,
+                   sequence_vocabulary, bracket_vocabulary, mixture_vocab,
                    test=False):
     def reader():
         for i,x in enumerate(data):
             seq = x["sequence"]
             dot = x["structure"]
+            mix = x['mixture']
             sequence = np.array([sequence_vocabulary.index(x) for x in list(seq)])
             structure = np.array([bracket_vocabulary.index(x) for x in list(dot)])
+            mixture = np.array([mixture_vocab.index(x) for x in list(mix)])
             if not test:
                 LP_v_unpaired_prob = x["p_unpaired"]
                 LP_v_unpaired_prob = np.array([x for x in LP_v_unpaired_prob])
-                yield sequence, structure, LP_v_unpaired_prob
+                yield sequence, structure, mixture, LP_v_unpaired_prob
             else:
-                yield sequence, structure
+                yield sequence, structure, mixture
     return reader
 
 
@@ -94,10 +101,11 @@ def run_train(args):
     out(log, "# Paddle: Using device: {}".format(place))
     out(log, "# Initializing model...")
 
-    seq_vocab, bracket_vocab = process_vocabulary(args, train_data)
+    seq_vocab, bracket_vocab, mixture_vocab = process_vocabulary(args, train_data)
     network = Network(
         seq_vocab,
         bracket_vocab,
+        mixture_vocab,
         dmodel=args.dmodel,
         layers=args.layers,
         dropout=args.dropout,
@@ -116,23 +124,24 @@ def run_train(args):
 
     train_reader = fluid.io.batch(
         fluid.io.shuffle(
-            reader_creator(args, train_data, seq_vocab, bracket_vocab), buf_size=500),
+            reader_creator(args, train_data, seq_vocab, bracket_vocab, mixture_vocab), buf_size=500),
         batch_size=args.batch_size)
     val_reader = fluid.io.batch(
         fluid.io.shuffle(
-            reader_creator(args, val_data, seq_vocab, bracket_vocab), buf_size=500),
+            reader_creator(args, val_data, seq_vocab, bracket_vocab, mixture_vocab), buf_size=500),
         batch_size=1)
 
     seq = fluid.data(name="seq", shape=[None], dtype="int64", lod_level=1)
     dot = fluid.data(name="dot", shape=[None], dtype="int64", lod_level=1)
+    mix = fluid.data(name='mix', shape=[None], dtype='int64', lod_level=1)
     y = fluid.data(name="label", shape=[None], dtype="float32")
-    predictions = network(seq, dot)
+    predictions = network(seq, dot, mix)
 
     loss = fluid.layers.mse_loss(input=predictions, label=y)
     avg_loss = fluid.layers.mean(loss)
 
     test_program = main_program.clone(for_test=True)
-    feeder = paddle.fluid.DataFeeder(place=place, feed_list=[seq, dot, y])
+    feeder = paddle.fluid.DataFeeder(place=place, feed_list=[seq, dot, mix, y])
 
     learning_rate = 1e-4
     beta1 = 0.9
@@ -154,7 +163,7 @@ def run_train(args):
             break
         train_reader = fluid.io.batch(
             fluid.io.shuffle(
-                reader_creator(args, train_data, seq_vocab, bracket_vocab), buf_size=500),
+                reader_creator(args, train_data, seq_vocab, bracket_vocab, mixture_vocab), buf_size=500),
         batch_size=args.batch_size)
 
         out(log, "# Epoch {} starting.".format(epoch))
@@ -234,10 +243,11 @@ def run_test_withlabel(args):
     test_data = load_test_label_data()
 
     out(log, "Loading model...")
-    seq_vocab, bracket_vocab = process_vocabulary(args, train_data)
+    seq_vocab, bracket_vocab, mixture_vocab = process_vocabulary(args, train_data)
     network = Network(
         seq_vocab,
         bracket_vocab,
+        mixture_vocab,
         dmodel=args.dmodel,
         layers=args.layers,
         dropout=0,
@@ -248,14 +258,15 @@ def run_test_withlabel(args):
     fluid.io.load_inference_model(args.model_path_base, exe)
     val_reader = fluid.io.batch(
         fluid.io.shuffle(
-            reader_creator(args, val_data, seq_vocab, bracket_vocab), buf_size=500),
+            reader_creator(args, val_data, seq_vocab, bracket_vocab, mixture_vocab), buf_size=500),
         batch_size=args.batch_size)
     test_reader = fluid.io.batch(
-            reader_creator(args, test_data, seq_vocab, bracket_vocab),
+            reader_creator(args, test_data, seq_vocab, bracket_vocab, mixture_vocab),
         batch_size=args.batch_size)
 
     seq = fluid.data(name="seq", shape=[None], dtype="int64", lod_level=1)
     dot = fluid.data(name="dot", shape=[None], dtype="int64", lod_level=1)
+    mix = fluid.data(name='mix', shape=[None], dtype="int64", lod_level=1)
     y = fluid.data(name="label", shape=[None], dtype="float32")
     predictions = network(seq, dot)
     loss = fluid.layers.mse_loss(input=predictions, label=y)
@@ -315,10 +326,11 @@ def run_test(args):
     test_data = load_test_data()
 
     print("Loading model...")
-    seq_vocab, bracket_vocab = process_vocabulary(args, train_data, quiet=True)
+    seq_vocab, bracket_vocab, mixture_vocab = process_vocabulary(args, train_data, quiet=True)
     network = Network(
         seq_vocab,
         bracket_vocab,
+        mixture_vocab,
         dmodel=args.dmodel,
         layers=args.layers,
         dropout=0,
@@ -328,16 +340,17 @@ def run_test(args):
     paddle.enable_static()
     fluid.io.load_inference_model(args.model_path_base, exe)
     test_reader = fluid.io.batch(
-            reader_creator(args, test_data, seq_vocab, bracket_vocab, test=True),
+            reader_creator(args, test_data, seq_vocab, bracket_vocab, mixture_vocab, test=True),
         batch_size=args.batch_size)
 
     seq = fluid.data(name="seq", shape=[None], dtype="int64", lod_level=1)
     dot = fluid.data(name="dot", shape=[None], dtype="int64", lod_level=1)
-    predictions = network(seq, dot)
+    mix = fluid.data(name="mix", shape=[None], dtype="int64", lod_level=1)
+    predictions = network(seq, dot, mix)
 
     main_program = fluid.default_main_program()
     test_program = main_program.clone(for_test=True)
-    test_feeder = fluid.DataFeeder(place=place, feed_list=[seq, dot])
+    test_feeder = fluid.DataFeeder(place=place, feed_list=[seq, dot, mix])
 
     test_results = []
     for data in test_reader():
