@@ -3,6 +3,7 @@ env
 __pycache__
 
 predict.files/
+predict.files.zip
 
 test_log.txt
 train_log.txt

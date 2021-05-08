@@ -57,8 +57,8 @@ def load_train_data():
     return train, dev
 
 def load_test_data():
-    assert os.path.exists("data/test_nolabel.txt")
-    test = read_data("data/test_nolabel.txt", test=True)
+    assert os.path.exists("data/B_board_112_seqs.txt")
+    test = read_data("data/B_board_112_seqs.txt", test=True)
     return test
 
 def load_test_label_data():

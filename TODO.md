@@ -1,0 +1,11 @@
+- 输入数据预处理，提取更多feature
+    - 基线模型使用LinearFold预测的RNA二级结构作为辅助feature。选手可以尝试增加更多的辅助feature，如：使用其他二级结构预测软件（如Vienna RNAfold, RNAstructure, CONTRAfold等）生成新的二级结构feature。
+- 更复杂的Embedding形式
+- 可以尝试在Embedding层使用Elmo, Bert等预训练模型
+- 优化网络结构和参数
+    - 隐层大小选择 - 宽度和层数
+    - 尝试复杂网络构建
+    - 尝试正则化、dropout等方式避免过拟合
+    - 选择学习率等超参数
+    - 选择合适的损失函数
+    - 尝试不同的优化器
