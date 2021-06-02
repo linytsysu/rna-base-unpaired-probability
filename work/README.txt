@@ -1,6 +1,3 @@
-Author: Juneki Hong (junekihong@gmail.com)
-Last updated: January 2021
-
 
 To train:
 python3 src/main.py train --model-path-base [model_directory_name]
